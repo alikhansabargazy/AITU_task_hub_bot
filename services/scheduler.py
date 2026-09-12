@@ -1,45 +1,63 @@
-from datetime import datetime, timedelta
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import logging
+from datetime import datetime, timedelta, timezone
+from html import escape
+
 from aiogram import Bot
-from database.db_requests import get_lessons_for_notification
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+from database.db_requests import get_notification_data
+from services.calendar import lesson_occurs, local_now
+from services.i18n import reset_language, set_language, tr
+
+logger = logging.getLogger(__name__)
+
 
 async def check_upcoming_lessons(bot: Bot):
-    now = datetime.now()
-    current_weekday = now.isoweekday()
-    target_time = (now + timedelta(minutes=15)).replace(second=0, microsecond=0).time()
-    
-    # ПРИНТ ДЛЯ ОТЛАДКИ: Посмотрим, что ищет бот прямо сейчас
-    print(f"[DEBUG] Ищу пары на день {current_weekday} со временем старта: {target_time}")
-    
-    lessons = await get_lessons_for_notification(current_weekday, target_time)
-    print(f"[DEBUG] Найдено пар: {len(lessons)}")
-    
-    for lesson in lessons:
-        start_str = lesson.start_time.strftime('%H:%M')
-        end_str = lesson.end_time.strftime('%H:%M')
-        location = lesson.location if lesson.location else "Не указана"
-        
-        text = (
-            f"🔔 <b>СКОРО ПАРА (через 15 минут)!</b>\n\n"
-            f"📚 Предмет: <b>{lesson.subject}</b>\n"
-            f"⏰ Время: {start_str} – {end_str}\n"
-            f"📍 Где: {location}\n\n"
-            f"<i>Пора собираться! 🏃‍♂️</i>"
-        )
-        
+    now = datetime.now(timezone.utc)
+    for user, lesson in await get_notification_data():
+        target = local_now(user, now) + timedelta(minutes=user.reminder_minutes)
+        if not lesson_occurs(lesson, target.date(), user):
+            continue
+        if (
+            lesson.start_time
+            != target.replace(second=0, microsecond=0, tzinfo=None).time()
+        ):
+            continue
+        token = set_language(user.language)
         try:
-            await bot.send_message(lesson.user_id, text, parse_mode="HTML")
-            print(f"[DEBUG] Уведомление успешно отправлено юзеру {lesson.user_id}!")
-        except Exception as e:
-            print(f"[ERROR] Не удалось отправить: {e}")
+            label = (
+                tr("через {minutes} мин.", minutes=user.reminder_minutes)
+                if user.reminder_minutes
+                else tr("начинается сейчас")
+            )
+            text = tr(
+                "🔔 <b>Пара {label}</b>\n\n📚 {subject}\n⏰ {start}–{end}\n📍 {location}\n👤 {teacher}",
+                label=label,
+                subject=escape(lesson.subject),
+                start=f"{lesson.start_time:%H:%M}",
+                end=f"{lesson.end_time:%H:%M}",
+                location=escape(lesson.location or tr("Не указано")),
+                teacher=escape(lesson.teacher or tr("Не указан")),
+            )
+            await bot.send_message(user.user_id, text, parse_mode="HTML")
+        except Exception:
+            logger.exception(
+                "Не удалось отправить напоминание пользователю %s", user.user_id
+            )
+        finally:
+            reset_language(token)
+
+
 def setup_scheduler(bot: Bot):
-    """
-    Запускает планировщик задач.
-    """
-    scheduler = AsyncIOScheduler(timezone="Asia/Almaty") # Укажи свой часовой пояс
-    
-    # Добавляем задачу: запускать функцию check_upcoming_lessons каждую минуту (* * * * *)
-    scheduler.add_job(check_upcoming_lessons, 'interval', minutes=1, args=[bot])
-    
+    scheduler = AsyncIOScheduler(timezone="UTC")
+    scheduler.add_job(
+        check_upcoming_lessons,
+        "cron",
+        second=0,
+        args=[bot],
+        max_instances=1,
+        coalesce=True,
+        misfire_grace_time=30,
+    )
     scheduler.start()
-    print("⏰ Планировщик уведомлений успешно запущен!")
+    return scheduler

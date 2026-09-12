@@ -1,73 +1,84 @@
 from datetime import datetime, time
-from sqlalchemy import BigInteger, ForeignKey, String, Integer, Time, DateTime, Boolean
-from sqlalchemy.orm import Mapped, mapped_column, DeclarativeBase, relationship
-from sqlalchemy.ext.asyncio import AsyncAttrs, create_async_engine, async_sessionmaker
 
-# Базовый класс для всех таблиц
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Time,
+    text,
+)
+from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
 class Base(AsyncAttrs, DeclarativeBase):
     pass
 
-# 1. ТАБЛИЦА ПОЛЬЗОВАТЕЛЕЙ
+
 class User(Base):
-    __tablename__ = 'users'
-    
-    # user_id берем прямо из Telegram, поэтому используем BigInteger
+    __tablename__ = "users"
     user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    timezone: Mapped[str] = mapped_column(String(50), default='UTC') # Часовой пояс
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow) # Дата регистрации
-    
-    # Связи для удобного получения данных (Один ко Многим)
+    timezone: Mapped[str] = mapped_column(String(50), default="Asia/Almaty")
+    language: Mapped[str] = mapped_column(String(2), default="ru")
+    notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    reminder_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    week_parity_offset: Mapped[int] = mapped_column(Integer, default=0)
+    dashboard_days: Mapped[int] = mapped_column(Integer, default=7)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     schedules: Mapped[list["Schedule"]] = relationship(back_populates="user")
     tasks: Mapped[list["Task"]] = relationship(back_populates="user")
 
 
-# 2. ТАБЛИЦА РАСПИСАНИЯ
 class Schedule(Base):
-    __tablename__ = 'schedules'
-    
+    __tablename__ = "schedules"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey('users.user_id'))
-    
-    subject: Mapped[str] = mapped_column(String(100)) # Например: "Высшая математика"
-    day_of_week: Mapped[int] = mapped_column(Integer) # 1 - Пн, 2 - Вт ... 7 - Вс
-    parity: Mapped[str] = mapped_column(String(20), default='all') # 'all', 'numerator' (числитель), 'denominator' (знаменатель)
-    
-    start_time: Mapped[time] = mapped_column(Time) # Время начала пары
-    end_time: Mapped[time] = mapped_column(Time) # Время окончания пары
-    
-    lesson_type: Mapped[str] = mapped_column(String(50), nullable=True) # Лекция, Практика, Лаба
-    location: Mapped[str] = mapped_column(String(100), nullable=True) # Аудитория, корпус или ссылка
-    teacher: Mapped[str] = mapped_column(String(100), nullable=True) # ФИО преподавателя
-    
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+    subject: Mapped[str] = mapped_column(String(100))
+    day_of_week: Mapped[int] = mapped_column(Integer)
+    parity: Mapped[str] = mapped_column(String(20), default="all")
+    start_time: Mapped[time] = mapped_column(Time)
+    end_time: Mapped[time] = mapped_column(Time)
+    lesson_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    teacher: Mapped[str | None] = mapped_column(String(100), nullable=True)
     user: Mapped["User"] = relationship(back_populates="schedules")
 
 
-# 3. ТАБЛИЦА ЗАДАЧ / ДЕДЛАЙНОВ
 class Task(Base):
-    __tablename__ = 'tasks'
-    
+    __tablename__ = "tasks"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey('users.user_id'))
-    
-    text: Mapped[str] = mapped_column(String(255)) # Суть задачи (Сдать отчет, подготовить презентацию)
-    subject_name: Mapped[str] = mapped_column(String(100), nullable=True) # Привязка к предмету (необязательно)
-    
-    deadline: Mapped[datetime] = mapped_column(DateTime, nullable=True) # До какого числа и времени нужно сделать
-    priority: Mapped[str] = mapped_column(String(20), default='normal') # 'high' (горит), 'normal' (обычно)
-    is_completed: Mapped[bool] = mapped_column(Boolean, default=False) # Выполнена или нет
-    
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"))
+    text: Mapped[str] = mapped_column(String(255))
+    subject_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    priority: Mapped[str] = mapped_column(String(20), default="normal")
+    is_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     user: Mapped["User"] = relationship(back_populates="tasks")
 
 
-# --- НАСТРОЙКА ПОДКЛЮЧЕНИЯ К БД ---
-
-# Создаем асинхронный "движок" базы данных (создаст файл db.sqlite3)
-engine = create_async_engine(url='sqlite+aiosqlite:///db.sqlite3', echo=False)
-
-# Создаем фабрику сессий (через них мы будем добавлять и искать данные)
+engine = create_async_engine(url="sqlite+aiosqlite:///db.sqlite3", echo=False)
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 
-# Функция для создания всех таблиц при запуске бота
+
 async def async_main():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Additive, repeatable migration: preserve existing users and schedules.
+        columns = {
+            row[1] for row in await conn.execute(text("PRAGMA table_info(users)"))
+        }
+        additions = {
+            "language": "VARCHAR(2) NOT NULL DEFAULT 'ru'",
+            "notifications_enabled": "BOOLEAN NOT NULL DEFAULT 1",
+            "reminder_minutes": "INTEGER NOT NULL DEFAULT 15",
+            "week_parity_offset": "INTEGER NOT NULL DEFAULT 0",
+            "dashboard_days": "INTEGER NOT NULL DEFAULT 7",
+        }
+        for name, definition in additions.items():
+            if name not in columns:
+                await conn.execute(
+                    text(f"ALTER TABLE users ADD COLUMN {name} {definition}")
+                )

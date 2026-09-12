@@ -1,34 +1,40 @@
 from aiogram import Router
-from aiogram.filters import CommandStart
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
-from database.db_requests import add_user
+from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message
 
-# Создаем роутер
+from database.db_requests import add_user
+from services.i18n import main_keyboard, tr
+
 router = Router()
 
-# Главное меню бота (кнопки)
-main_keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="📅 Расписание"), KeyboardButton(text="📝 Дедлайны")],
-        [KeyboardButton(text="➕ Добавить"), KeyboardButton(text="⚙️ Настройки")]
-    ],
-    resize_keyboard=True,
-    input_field_placeholder="Выберите действие в меню..."
-)
 
 @router.message(CommandStart())
-async def cmd_start(message: Message):
-    user_id = message.from_user.id
-    user_name = message.from_user.first_name
-    
-    # Записываем юзера в базу данных
-    await add_user(user_id)
-    
-    welcome_text = (
-        f"Привет, {user_name}! 👋\n\n"
-        f"Я твой личный университетский ассистент AITU. "
-        f"Помогу не забыть про пары и вовремя сдать все дедлайны.\n\n"
-        f"👇 Выбери нужное действие в меню ниже."
+async def cmd_start(message: Message, state: FSMContext):
+    await state.clear()
+    await add_user(message.from_user.id)
+    await message.answer(
+        tr(
+            "Привет, {name}! 👋\nЯ помогу управлять расписанием и дедлайнами. Язык можно изменить в настройках.",
+            name=message.from_user.first_name,
+        ),
+        reply_markup=main_keyboard(),
     )
-    
-    await message.answer(welcome_text, reply_markup=main_keyboard)
+    from handlers.dashboard import show_dashboard
+
+    await show_dashboard(message, message.from_user.id)
+
+
+@router.message(Command("cancel"))
+async def cancel(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer(tr("Действие отменено."), reply_markup=main_keyboard())
+
+
+@router.message(Command("help"))
+async def help_menu(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer(
+        tr("Выберите раздел в меню. /cancel — отменить ввод."),
+        reply_markup=main_keyboard(),
+    )
