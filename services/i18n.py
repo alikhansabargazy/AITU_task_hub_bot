@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from aiogram import BaseMiddleware
 from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
 
-_language = ContextVar("language", default="ru")
+_language = ContextVar("language", default="en")
 _catalog = {}
 
 
@@ -14,7 +14,7 @@ def register(catalog):
 
 
 def set_language(code):
-    return _language.set(code if code in ("ru", "en", "kk") else "ru")
+    return _language.set(code if code in ("ru", "en", "kk") else "en")
 
 
 def reset_language(token):

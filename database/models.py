@@ -22,7 +22,7 @@ class User(Base):
     __tablename__ = "users"
     user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     timezone: Mapped[str] = mapped_column(String(50), default="Asia/Almaty")
-    language: Mapped[str] = mapped_column(String(2), default="ru")
+    language: Mapped[str] = mapped_column(String(2), default="en")
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     reminder_minutes: Mapped[int] = mapped_column(Integer, default=15)
     week_parity_offset: Mapped[int] = mapped_column(Integer, default=0)
@@ -71,7 +71,7 @@ async def async_main():
             row[1] for row in await conn.execute(text("PRAGMA table_info(users)"))
         }
         additions = {
-            "language": "VARCHAR(2) NOT NULL DEFAULT 'ru'",
+            "language": "VARCHAR(2) NOT NULL DEFAULT 'en'",
             "notifications_enabled": "BOOLEAN NOT NULL DEFAULT 1",
             "reminder_minutes": "INTEGER NOT NULL DEFAULT 15",
             "week_parity_offset": "INTEGER NOT NULL DEFAULT 0",

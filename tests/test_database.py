@@ -49,7 +49,7 @@ class DatabaseTests(MemoryDatabase):
         first = await db.add_user(1)
         second = await db.add_user(1)
         self.assertEqual(first.created_at, second.created_at)
-        self.assertEqual((second.timezone, second.language), ("Asia/Almaty", "ru"))
+        self.assertEqual((second.timezone, second.language), ("Asia/Almaty", "en"))
         self.assertEqual(
             (
                 second.notifications_enabled,
@@ -297,7 +297,7 @@ class MigrationTests(unittest.IsolatedAsyncioTestCase):
                         user.week_parity_offset,
                         user.dashboard_days,
                     ),
-                    ("ru", True, 15, 0, 7),
+                    ("en", True, 15, 0, 7),
                 )
                 lesson = await session.get(models.Schedule, 7)
                 task = await session.get(models.Task, 8)
