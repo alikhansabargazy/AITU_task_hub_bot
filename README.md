@@ -9,7 +9,7 @@ Run the API locally:
 
 ```bash
 pip install -r requirements.txt
-uvicorn backend.main:app --reload
+uvicorn backend.main:app --reload --host 0.0.0.0
 ```
 
 Interactive API documentation is available at `http://127.0.0.1:8000/docs`.
@@ -19,6 +19,13 @@ The first vertical slice exposes task CRUD under
 For this migration stage, `user_id` is passed in the URL to preserve the
 existing Telegram data model. It must be replaced by authenticated user data
 before a public deployment.
+
+## Android application
+
+The native Kotlin + Jetpack Compose client lives in `android/`. It currently
+supports loading, filtering, creating, completing, reopening and deleting
+tasks through the API. Open that directory in Android Studio and run an
+emulator; detailed setup notes are in `android/README.md`.
 
 Telegram-бот для университетского расписания и дедлайнов. Стек: Python, aiogram 3, SQLAlchemy 2, async SQLite (`aiosqlite`), APScheduler.
 

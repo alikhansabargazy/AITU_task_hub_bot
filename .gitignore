@@ -5,3 +5,12 @@ db.sqlite3
 __pycache__/
 *.pyc
 .DS_Store
+
+# Android Studio / Gradle
+.idea/
+*.iml
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/build/
+android/app/build/
