@@ -1,5 +1,25 @@
 # AITU Task Hub Bot
 
+The repository now also contains the first Android migration layer: a FastAPI
+backend that reuses the bot's existing database and task business logic.
+
+## TaskHub API (Android migration)
+
+Run the API locally:
+
+```bash
+pip install -r requirements.txt
+uvicorn backend.main:app --reload
+```
+
+Interactive API documentation is available at `http://127.0.0.1:8000/docs`.
+The first vertical slice exposes task CRUD under
+`/api/v1/users/{user_id}/tasks`; the Telegram bot continues to work as before.
+
+For this migration stage, `user_id` is passed in the URL to preserve the
+existing Telegram data model. It must be replaced by authenticated user data
+before a public deployment.
+
 Telegram-бот для университетского расписания и дедлайнов. Стек: Python, aiogram 3, SQLAlchemy 2, async SQLite (`aiosqlite`), APScheduler.
 
 ## Функции
