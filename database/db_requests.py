@@ -298,6 +298,6 @@ async def get_notification_data():
         result = await session.execute(
             select(User, Schedule)
             .join(Schedule, Schedule.user_id == User.user_id)
-            .where(User.notifications_enabled.is_(True))
+            .where(User.notifications_enabled.is_(True), User.user_id > 0)
         )
         return result.all()

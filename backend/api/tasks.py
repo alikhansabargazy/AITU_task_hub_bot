@@ -3,11 +3,11 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Path, Query, Response, status
 
 from backend.schemas import TaskCreate, TaskResponse, TaskUpdate
+from backend.auth import UserId
 from database import db_requests as db
 
 
-router = APIRouter(prefix="/users/{user_id}/tasks", tags=["tasks"])
-UserId = Annotated[int, Path(gt=0)]
+router = APIRouter(prefix="/me/tasks", tags=["tasks"])
 
 
 def invalid_request(error: ValueError) -> HTTPException:

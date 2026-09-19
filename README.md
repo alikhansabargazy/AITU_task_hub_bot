@@ -1,31 +1,55 @@
-# AITU Task Hub Bot
+# TaskHub — Android + FastAPI
 
-The repository now also contains the first Android migration layer: a FastAPI
-backend that reuses the bot's existing database and task business logic.
+Самостоятельное Android-приложение для учёбы. Telegram, номер телефона, BotFather
+и токен бота для приложения **не нужны**. Регистрация — по логину и паролю.
+Старый бот сохранён как отдельный, необязательный клиент; новые аккаунты не
+привязываются к Telegram ID и не импортируют старые данные автоматически.
 
-## TaskHub API (Android migration)
+## Что реализовано в Android 0.2
 
-Run the API locally:
+| Раздел | Функции |
+| --- | --- |
+| Аккаунт | Регистрация, вход, сохранение сессии, выход, смена пароля с отзывом остальных сессий |
+| Главная | Текущая/следующая пара, количество пар и задач, просроченные, ближайшие и бессрочные задачи |
+| Задачи | Создание, редактирование, удаление, выполнение/возобновление, поиск, статус, предмет, срок, приоритет |
+| Расписание | Дни/неделя, CRUD, тип занятия, преподаватель, аудитория, чётность, проверка пересечений |
+| Настройки | ru/en/kk, IANA-зона, напоминания 0/5/10/15/30/60 минут, чётность, горизонт 1/3/7/14 дней |
+| Уведомления | Локальные Android-напоминания, разрешения Android 13+, точные будильники по разрешению, перепланирование после перезагрузки |
+| Подключение | Изменяемый адрес сервера на экране входа, сохранённые данные для просмотра без сети, фоновая синхронизация |
+
+## Быстрый запуск без бота
+
+Из корня репозитория, Python 3.10+:
 
 ```bash
-pip install -r requirements.txt
-uvicorn backend.main:app --reload --host 0.0.0.0
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -r backend/requirements.txt
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
-Interactive API documentation is available at `http://127.0.0.1:8000/docs`.
-The first vertical slice exposes task CRUD under
-`/api/v1/users/{user_id}/tasks`; the Telegram bot continues to work as before.
+На телефоне в той же Wi-Fi-сети проверь `http://192.168.10.4:8000/docs`
+(подставь текущий адрес Mac). Backend должен оставаться запущенным.
 
-For this migration stage, `user_id` is passed in the URL to preserve the
-existing Telegram data model. It must be replaced by authenticated user data
-before a public deployment.
+В другом терминале, из корня репозитория:
 
-## Android application
+```bash
+cd android
+./gradlew assembleDebug
+open app/build/outputs/apk/debug
+```
 
-The native Kotlin + Jetpack Compose client lives in `android/`. It currently
-supports loading, filtering, creating, completing, reopening and deleting
-tasks through the API. Open that directory in Android Studio and run an
-emulator; detailed setup notes are in `android/README.md`.
+Установи `app-debug.apk`, укажи адрес API на экране входа и создай аккаунт.
+Для эмулятора адрес — `http://10.0.2.2:8000/`. IP теперь можно менять в приложении,
+без изменения исходников и новой сборки. Перед сменой сервера выйди из аккаунта.
+
+Подробно: [Android: сборка, установка, обновление](android/README.md),
+[Backend: API, аккаунты, миграция и безопасность](backend/README.md).
+
+GitHub Actions (`TaskHub tests and APK`) запускает Python-тесты, сборку APK,
+Android unit tests и lint. Успешная сборка публикует артефакт `taskhub-debug-apk`.
+
+## Существующий Telegram-бот (необязательный)
 
 Telegram-бот для университетского расписания и дедлайнов. Стек: Python, aiogram 3, SQLAlchemy 2, async SQLite (`aiosqlite`), APScheduler.
 
@@ -63,7 +87,7 @@ venv/bin/python main.py
 
 После `read` введите токен и нажмите Enter (обычный `read` не скрывает ввод на экране). Альтернатива — локальный файл `.env` с переменной `BOT_TOKEN`, загружаемый `python-dotenv`; убедитесь, что он исключён из Git. Без токена конфигурация выдаёт ошибку.
 
-`main.py` запускает реального бота: обращается к Telegram, запускает планировщик и создаёт/обновляет SQLite. Файл `db.sqlite3` расположен относительно **текущей рабочей директории**, поэтому запускайте из корня проекта. Для тестов запуск `main.py` не нужен.
+`main.py` запускает реального бота: обращается к Telegram, запускает планировщик и создаёт/обновляет SQLite. По умолчанию файл `db.sqlite3` находится в корне репозитория независимо от рабочей директории. Для другой SQLite-базы используйте `DATABASE_URL` с абсолютным путём. Для тестов запуск `main.py` не нужен.
 
 ## Время и чётность
 
@@ -101,9 +125,11 @@ venv/bin/python -m unittest discover -s tests -v
 - `tests/test_handlers.py` — guards экранов, сохранение черновика при обновлении dashboard, выбор языка, ручной ввод зоны, невалидное время и дата. Telegram и внешние эффекты подменены mocks.
 - `tests/test_notifications.py` — фиксированное время, переход через полночь, чётность, нулевой интервал, локализация по получателю, HTML, ошибки отправки и конфигурация scheduler. Отправка сообщений и запуск scheduler замоканы.
 
+Дополнительно `test_api_tasks.py` и `test_api_features.py` проверяют собственные аккаунты, сессии, ownership, CRUD, конфликты, настройки и dashboard. Проверки используют изолированную in-memory SQLite и не требуют бота.
+
 Тесты проверяют требуемое поведение без `expectedFailure`: незавершённые изменения production-кода остаются видимыми ошибками, а не скрываются как успешные проверки.
 
-### Обнаруженные ограничения снимка при первом прогоне
+### Исторические замечания первого прогона (до Android 0.2)
 
 При параллельной доработке интеграции локализации первый прогон из 38 тестов выявил:
 

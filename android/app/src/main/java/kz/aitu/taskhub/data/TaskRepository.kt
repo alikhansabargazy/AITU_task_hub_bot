@@ -1,19 +1,14 @@
 package kz.aitu.taskhub.data
 
-class TaskRepository(
-    private val api: TaskHubApi,
-    private val userId: Long,
-) {
-    suspend fun tasks(): List<TaskDto> = api.getTasks(userId)
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
-    suspend fun create(text: String): TaskDto =
-        api.createTask(userId, CreateTaskRequest(text = text.trim()))
-
-    suspend fun setCompleted(task: TaskDto, completed: Boolean): TaskDto =
-        api.updateTask(userId, task.id, UpdateTaskRequest(isCompleted = completed))
-
-    suspend fun delete(task: TaskDto) {
-        val response = api.deleteTask(userId, task.id)
-        check(response.isSuccessful) { "Не удалось удалить задачу (${response.code()})" }
+class TaskRepository(val api: TaskHubApi) {
+    suspend fun snapshot(): Snapshot = coroutineScope {
+        val profile = async { api.profile() }
+        val tasks = async { api.tasks() }
+        val lessons = async { api.lessons() }
+        val dashboard = async { api.dashboard() }
+        Snapshot(profile.await(), tasks.await(), lessons.await(), dashboard.await())
     }
 }

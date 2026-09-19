@@ -2,9 +2,6 @@
 
 from contextvars import ContextVar
 
-from aiogram import BaseMiddleware
-from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
-
 _language = ContextVar("language", default="en")
 _catalog = {}
 
@@ -85,6 +82,8 @@ MENU = ("🏠 Дашборд", "📅 Расписание", "📝 Дедлайн
 
 
 def main_keyboard():
+    from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=tr(MENU[0]))],
@@ -96,8 +95,9 @@ def main_keyboard():
     )
 
 
-class LocaleMiddleware(BaseMiddleware):
+class LocaleMiddleware:
     async def __call__(self, handler, event, data):
+        from aiogram.types import Message
         from database.db_requests import get_user
 
         user = data.get("event_from_user") or getattr(event, "from_user", None)

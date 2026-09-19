@@ -41,6 +41,11 @@ class TaskApiTests(unittest.IsolatedAsyncioTestCase):
             transport=ASGITransport(app=app), base_url="http://test"
         )
         self.addAsyncCleanup(self.client.aclose)
+        registered = await self.client.post("/api/v1/auth/register", json={
+            "username": "test_user", "password": "test-password-123",
+        })
+        self.assertEqual(registered.status_code, 201, registered.text)
+        self.client.headers["Authorization"] = "Bearer " + registered.json()["access_token"]
 
     async def test_health(self):
         response = await self.client.get("/health")
@@ -49,7 +54,7 @@ class TaskApiTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_task_crud_and_user_isolation(self):
         created = await self.client.post(
-            "/api/v1/users/1/tasks",
+            "/api/v1/me/tasks",
             json={
                 "text": " Psychology presentation ",
                 "subject_name": "Psychology",
@@ -62,35 +67,36 @@ class TaskApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task["text"], "Psychology presentation")
         self.assertFalse(task["is_completed"])
 
-        listed = await self.client.get("/api/v1/users/1/tasks?completed=false")
+        listed = await self.client.get("/api/v1/me/tasks?completed=false")
         self.assertEqual([item["id"] for item in listed.json()], [task["id"]])
 
         updated = await self.client.patch(
-            f"/api/v1/users/1/tasks/{task['id']}",
+            f"/api/v1/me/tasks/{task['id']}",
             json={"is_completed": True},
         )
         self.assertEqual(updated.status_code, 200)
         self.assertTrue(updated.json()["is_completed"])
 
-        foreign = await self.client.get(f"/api/v1/users/2/tasks/{task['id']}")
+        other = await self.client.post("/api/v1/auth/register", json={"username": "other_user", "password": "test-password-123"})
+        foreign = await self.client.get(f"/api/v1/me/tasks/{task['id']}", headers={"Authorization": "Bearer " + other.json()["access_token"]})
         self.assertEqual(foreign.status_code, 404)
 
-        deleted = await self.client.delete(f"/api/v1/users/1/tasks/{task['id']}")
+        deleted = await self.client.delete(f"/api/v1/me/tasks/{task['id']}")
         self.assertEqual(deleted.status_code, 204)
-        missing = await self.client.get(f"/api/v1/users/1/tasks/{task['id']}")
+        missing = await self.client.get(f"/api/v1/me/tasks/{task['id']}")
         self.assertEqual(missing.status_code, 404)
 
     async def test_rejects_aware_deadline_and_empty_patch(self):
         aware = await self.client.post(
-            "/api/v1/users/1/tasks",
+            "/api/v1/me/tasks",
             json={"text": "Task", "deadline": "2026-09-20T18:00:00Z"},
         )
         self.assertEqual(aware.status_code, 422)
 
         created = await self.client.post(
-            "/api/v1/users/1/tasks", json={"text": "Task"}
+            "/api/v1/me/tasks", json={"text": "Task"}
         )
         empty = await self.client.patch(
-            f"/api/v1/users/1/tasks/{created.json()['id']}", json={}
+            f"/api/v1/me/tasks/{created.json()['id']}", json={}
         )
         self.assertEqual(empty.status_code, 422)

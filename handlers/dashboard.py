@@ -17,6 +17,7 @@ from services.i18n import register, tr
 
 from database import db_requests as db
 from services.calendar import lesson_occurs, local_now, week_parity
+from services.dashboard import build_dashboard
 from services.settings_translations import CATALOG
 
 register(CATALOG)
@@ -77,49 +78,15 @@ def lesson_line(occurrence):
 
 
 def render_dashboard(user, lessons, tasks, *, now=None):
-    now = local_now(user, now=now)
+    data = build_dashboard(user, lessons, tasks, now=now)
+    now = data["now"]
     today = now.date()
-    wall_now = now.replace(tzinfo=None)
     days = user.dashboard_days
-    horizon = datetime.combine(today + timedelta(days=days), time.min)
-    parity = week_parity(today, offset=user.week_parity_offset)
-
-    occurrences = []
-    today_count = 0
-    # Include yesterday solely for a lesson that runs across midnight.
-    # The forward search covers today and the next 13 local dates.
-    for delta in range(-1, 14):
-        date = today + timedelta(days=delta)
-        for lesson in lessons:
-            if not lesson_occurs(lesson, date, user):
-                continue
-            if delta == 0:
-                today_count += 1
-            start = datetime.combine(date, lesson.start_time, tzinfo=now.tzinfo)
-            end = datetime.combine(date, lesson.end_time, tzinfo=now.tzinfo)
-            if lesson.end_time < lesson.start_time:
-                end += timedelta(days=1)
-            occurrences.append((start, end, lesson))
-    occurrences.sort(key=lambda item: (item[0], item[1], item[2].id))
-    current = [item for item in occurrences if item[0] <= now < item[1]]
-    upcoming_lesson = next((item for item in occurrences if item[0] > now), None)
-
-    active = [task for task in tasks if not task.is_completed]
-    overdue, upcoming, undated = [], [], []
-    later_count = 0
-    for task in active:
-        deadline = local_deadline(task, now)
-        if deadline is None:
-            undated.append(task)
-        elif deadline < wall_now:
-            overdue.append((deadline, task))
-        elif deadline < horizon:
-            upcoming.append((deadline, task))
-        else:
-            later_count += 1
-    overdue.sort(key=lambda item: (item[0], item[1].id))
-    upcoming.sort(key=lambda item: (item[0], item[1].id))
-    undated.sort(key=lambda task: task.id)
+    horizon, parity = data["horizon"], data["parity"]
+    today_count, current = data["today_count"], data["current"]
+    upcoming_lesson, active = data["upcoming_lesson"], data["active"]
+    overdue, upcoming, undated = data["overdue"], data["upcoming"], data["undated"]
+    later_count = data["later_count"]
 
     parity_label = tr(PARITIES[parity]) if parity in PARITIES else str(parity)
     lines = [

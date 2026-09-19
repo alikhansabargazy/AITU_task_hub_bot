@@ -1,4 +1,8 @@
+import os
 from datetime import datetime, time
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 from sqlalchemy import (
     BigInteger,
@@ -8,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Time,
+    event,
     text,
 )
 from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
@@ -59,7 +64,45 @@ class Task(Base):
     user: Mapped["User"] = relationship(back_populates="tasks")
 
 
-engine = create_async_engine(url="sqlite+aiosqlite:///db.sqlite3", echo=False)
+class AppAccount(Base):
+    """Standalone accounts use negative IDs; Telegram IDs remain untouched."""
+
+    __tablename__ = "app_accounts"
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.user_id"), primary_key=True)
+    username: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(80))
+    password_hash: Mapped[str] = mapped_column(String(255))
+
+
+class AppSession(Base):
+    __tablename__ = "app_sessions"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_accounts.user_id"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class AuthRateLimit(Base):
+    __tablename__ = "auth_rate_limits"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window: Mapped[int] = mapped_column(Integer)
+    attempts: Mapped[int] = mapped_column(Integer)
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env")
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite+aiosqlite:///{PROJECT_ROOT / 'db.sqlite3'}")
+engine = create_async_engine(url=DATABASE_URL, echo=False)
+
+
+@event.listens_for(engine.sync_engine, "connect")
+def configure_sqlite(connection, _):
+    if engine.dialect.name == "sqlite":
+        cursor = connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.close()
+
+
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 
